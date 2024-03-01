@@ -8,17 +8,20 @@
  * and right to change the angle.
  */
  
-float theta;   
+float theta;
+float a = 0;
 
 void setup() {
   size(640, 360);
+  if (args != null) {
+    a = float(args[0]);
+  }
 }
 
 void draw() {
   background(0);
   stroke(255);
   // Let's pick an angle 0 to 90 degrees based on the mouse position
-  float a = random(90);
   // Convert it to radians
   theta = radians(a);
   // Start the tree from the bottom of the screen

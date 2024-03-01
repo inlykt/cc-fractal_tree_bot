@@ -8,6 +8,7 @@ require('dotenv').config();
 const mastodon = require('mastodon-api');
 const fs = require('fs');
 const util = require('util');
+const { devNull } = require('os');
 const exec = util.promisify(require('child_process').exec);
 
 console.log('mastodon bot starting...');
@@ -20,31 +21,60 @@ const M = new mastodon({
     api_url: 'https://botsin.space/api/v1/', // optional, defaults to https://mastodon.social/api/v1/
 })
 
-setInterval(() => {
-    toot()
-        .then(response => console.log(response))
-        .catch(error => console.error(error));
-}, 60000);
+const listener = M.stream('streaming/user');
 
-async function toot() {
-    //builds tree
-    const response1 = await exec('processing-java --sketch="' + __dirname + '/treegen" --run');
-    const angle = response1.stdout.split('\n')[0].trimEnd();
+listener.on('message', response => {
+    if (response.event === 'notification' && response.data.type === 'mention') {
+        const content = response.data.status.content;
+        const cangle = content.replace(/FTB_36/g, '').match(/\d+/)
+        const acct = response.data.account.acct;
+        const reply_id = response.data.status.id;
+        if (cangle) {
+            angle = cangle[0]
+            grow(angle)
+                .then(() => upload('treegen/tree.png', `a fractal tree of ${angle}`))
+                .then(img_id => toot(`here is your tree, @${acct}, with angle ${angle}`, reply_id, img_id))
+                .catch(error => console.error(error))
+        } else {
+            toot(`@${acct}, please message me with a number!`, reply_id)
+        }  
+    }
+})
+
+async function grow(angle) {
+    //builds tree returns nothing
+    const response = await exec(`processing-java --sketch="${__dirname}/treegen" --run ${angle}`);
     console.log(angle)
-    
-    //uploads image
-    const params1 = {
-        file: fs.createReadStream('treegen/tree.png'),
-        description: `an RNG fractal tree with ${angle}`
-    }
-    const response2 = await M.post('media', params1);
-    const id = response2.data.id;
+}
 
-    //toots image
-    const params2 = {
-        status: `a tree tho (angle: ${angle})`,
-        media_ids: [id]
+async function upload(imgPath, imgDesc) { 
+    //uploads image returns image id
+    const params = {
+        file: fs.createReadStream(imgPath),
+        description: imgDesc
     }
-    const response3 = await M.post('statuses', params2)
-    return response3;
+    const response = await M.post('media', params);
+    const id = response.data.id;
+    console.log('uploaded')
+    return id
+}
+
+async function toot(message, reply_id, media) {
+    //toots image
+    let params = {}
+    if (media) {
+        params = {
+            status: message,
+            in_reply_to_id: reply_id,
+            media_ids: [media]
+        }
+    } else {
+        params = {
+            status: message,
+            in_reply_to_id: reply_id
+        }
+    }
+    const response = await M.post('statuses', params)
+    console.log(response)
+    return response;
 }
